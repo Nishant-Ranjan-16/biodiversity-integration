@@ -1,0 +1,69 @@
+# ───────────────────────── GBIF biodiversity pipeline config ─────────────────────────
+# Credentials are NOT here — set GBIF_USER / GBIF_PWD in the environment.
+
+gbif:
+  country: IN
+  bbox: [77.55, 12.95, 77.65, 13.05]                 # [min_lon, min_lat, max_lon, max_lat]; null = whole country.
+                             # Hourly testing: use a tiny bbox, e.g. [77.55, 12.95, 77.65, 13.05]
+  format: SIMPLE_PARQUET     # note: SIMPLE_PARQUET does NOT carry iucnRedListCategory —
+                             # IUCN status is added by the enrich stage below.
+  poll_seconds: 30
+  timeout_seconds: null
+
+clean:
+  basis: true                # drop specimen / fossil / LIVING_SPECIMEN (zoo/garden) records
+  captive: true              # drop establishmentMeans MANAGED/CULTIVATED/CAPTIVE (present in SIMPLE_PARQUET)
+  present_only: true         # keep occurrenceStatus = PRESENT
+  max_uncertainty_m: 10000   # drop points with coordinateUncertaintyInMeters above this; -1 disables
+  min_year: 1950
+  max_year: 2100
+  drop_null_species: false
+  block_institutions: []     # institutionCodes to exclude (zoos etc.)
+
+enrich:                      # IUCN Red List enrichment (adds an iucn_category column)
+  enabled: true
+  species_col: species       # species column in the occurrences to match on
+  # The name->category lookup is built ONCE from the two IUCN bulk files below and
+  # cached at `lookup`; it is rebuilt only when `lookup` is missing. Point these at
+  # your IUCN export (assessments.csv + synonyms.csv); synonym resolution bridges
+  # GBIF's older names to IUCN's accepted names.
+  lookup: data/boundaries/iucn_lookup.parquet
+  assessments: data/boundaries/iucn/assessments.csv
+  synonyms: data/boundaries/iucn/synonyms.csv
+  name_col: scientificName   # columns in the built lookup (resolve_synonyms output)
+  category_col: redlistCategory
+  id_col: internalTaxonId
+
+boundaries:
+  tehsil: data/boundaries/static.parquet
+  tehsil_id_col: tehsil_id
+  mws: null                  # data/boundaries/mws.parquet  (null = skip MWS join)
+  mws_id_col: null
+  snap_nearest: true
+  snap_max_deg: 0.02
+  chunk: 500000
+
+urban:
+  enabled: true
+  min_year: 1990
+  max_year: 2026
+  iucn_col: iucn_category    # the column the enrich stage writes; threatened metrics use it
+
+migration:
+  enabled: true
+  avonet: data/boundaries/AVONET.xlsx
+  avonet_species_col: Species2
+  min_points: 10000
+  phenology:
+    migratory: [Anas acuta, Clamator jacobinus]
+    resident:  [Corvus splendens, Pycnonotus cafer]
+    normalize: effort
+
+paths:
+  scripts_dir: scripts       # where build_dataset.py / make_corelens_annual.py / resolve_synonyms.py / add_iucn.py live
+  work_dir: data/raw         # big per-run intermediates (download + clean + enriched + tagged) — ephemeral
+  out_dir: outputs           # the retained time series / metrics (the "database")
+
+retention:
+  delete_raw_after: true
+  keep_runs: 1
