@@ -65,5 +65,5 @@ paths:
   out_dir: outputs           # the retained time series / metrics (the "database")
 
 retention:
-  delete_raw_after: true
+  delete_raw_after: false
   keep_runs: 1
